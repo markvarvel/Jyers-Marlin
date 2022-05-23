@@ -59,11 +59,11 @@ void GcodeSuite::M906() {
 
   #if AXIS_IS_TMC(X2) || AXIS_IS_TMC(Y2) || AXIS_IS_TMC(Z2) || AXIS_IS_TMC(Z3) || AXIS_IS_TMC(Z4)
     const int8_t index = parser.byteval('I', -1);
-  #else
+  #elif AXIS_IS_TMC(X) || AXIS_IS_TMC(Y) || AXIS_IS_TMC(Z)
     constexpr int8_t index = -1;
   #endif
 
-  LOOP_LOGICAL_AXES(i) if (uint16_t value = parser.intval(axis_codes[i])) {
+  LOOP_LOGICAL_AXES(i) if (uint16_t value = parser.intval(AXIS_CHAR(i))) {
     report = false;
     switch (i) {
       #if AXIS_IS_TMC(X) || AXIS_IS_TMC(X2)

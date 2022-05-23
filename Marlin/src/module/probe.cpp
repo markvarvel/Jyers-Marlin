@@ -77,9 +77,17 @@
   #include "servo.h"
 #endif
 
+#if HAS_PTC
+  #include "../feature/probe_temp_comp.h"
+#endif
+
+#if ENABLED(X_AXIS_TWIST_COMPENSATION)
+  #include "../feature/x_twist.h"
+#endif
+
 #if ENABLED(EXTENSIBLE_UI)
   #include "../lcd/extui/ui_api.h"
-#elif ENABLED(DWIN_CREALITY_LCD_ENHANCED)
+#elif ENABLED(DWIN_LCD_PROUI)
   #include "../lcd/e3v2/proui/dwin.h"
 #endif
 
@@ -92,6 +100,22 @@ xyz_pos_t Probe::offset; // Initialized by settings.load()
 
 #if HAS_PROBE_XY_OFFSET
   const xy_pos_t &Probe::offset_xy = Probe::offset;
+#endif
+
+// EXTJYERSUI - Probe margin
+#if EXTJYERSUI
+  float Probe::_min_x(const xy_pos_t &probe_offset_xy) {
+     return _MAX((X_MIN_BED) + (HMI_datas.probing_margin), (X_MIN_POS) + probe_offset_xy.x);
+  }
+  float Probe::_max_x(const xy_pos_t &probe_offset_xy) {
+     return _MIN((X_MAX_BED) - (HMI_datas.probing_margin), (X_MAX_POS) + probe_offset_xy.x);
+  }
+  float Probe::_min_y(const xy_pos_t &probe_offset_xy) {
+     return _MAX((Y_MIN_BED) + (HMI_datas.probing_margin), (Y_MIN_POS) + probe_offset_xy.y);
+  }
+  float Probe::_max_y(const xy_pos_t &probe_offset_xy) {
+     return _MIN((Y_MAX_BED) - (HMI_datas.probing_margin), (Y_MAX_POS) + probe_offset_xy.y);
+  }
 #endif
 
 #if ENABLED(SENSORLESS_PROBING)
@@ -298,17 +322,16 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
         if (deploy != PROBE_TRIGGERED()) break;
       #endif
 
-      BUZZ(100, 659);
-      BUZZ(100, 698);
+      OKAY_BUZZ();
 
       FSTR_P const ds_str = deploy ? GET_TEXT_F(MSG_MANUAL_DEPLOY) : GET_TEXT_F(MSG_MANUAL_STOW);
       ui.return_to_status();       // To display the new status message
       ui.set_status(ds_str, 99);
-      SERIAL_ECHOLNF(ds_str);
+      SERIAL_ECHOLNF(deploy ? GET_EN_TEXT_F(MSG_MANUAL_DEPLOY) : GET_EN_TEXT_F(MSG_MANUAL_STOW));
 
-      TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_do(PROMPT_USER_CONTINUE, F("Stow Probe"), FPSTR(CONTINUE_STR)));
-      TERN_(EXTENSIBLE_UI, ExtUI::onUserConfirmRequired(F("Stow Probe")));
-      TERN_(DWIN_CREALITY_LCD_ENHANCED, DWIN_Popup_Confirm(ICON_BLTouch, F("Stow Probe"), FPSTR(CONTINUE_STR)));
+      TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_do(PROMPT_USER_CONTINUE, ds_str, FPSTR(CONTINUE_STR)));
+      TERN_(EXTENSIBLE_UI, ExtUI::onUserConfirmRequired(ds_str));
+      TERN_(DWIN_LCD_PROUI, DWIN_Popup_Confirm(ICON_BLTouch, ds_str, FPSTR(CONTINUE_STR)));
       TERN_(HAS_RESUME_CONTINUE, wait_for_user_response());
       ui.reset_status();
 
@@ -383,30 +406,66 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
 
     #if ENABLED(WAIT_FOR_NOZZLE_HEAT)
       const celsius_t hotendPreheat = hotend_temp > thermalManager.degTargetHotend(0) ? hotend_temp : 0;
-      if (hotendPreheat) {
-        DEBUG_ECHOPGM("hotend (", hotendPreheat, ")");
-        thermalManager.setTargetHotend(hotendPreheat, 0);
-      }
+      #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+          if (HMI_datas.ena_LevelingTemp_hotend) {
+      #endif
+            if (hotendPreheat) {
+              DEBUG_ECHOPGM("hotend (", hotendPreheat, ")");
+              thermalManager.setTargetHotend(hotendPreheat, 0);
+            }
+      #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+        }
+        else thermalManager.setTargetHotend(0, 0);
+      #endif        
     #elif ENABLED(WAIT_FOR_BED_HEAT)
       constexpr celsius_t hotendPreheat = 0;
     #endif
 
     #if ENABLED(WAIT_FOR_BED_HEAT)
       const celsius_t bedPreheat = bed_temp > thermalManager.degTargetBed() ? bed_temp : 0;
-      if (bedPreheat) {
-        if (hotendPreheat) DEBUG_ECHOPGM(" and ");
-        DEBUG_ECHOPGM("bed (", bedPreheat, ")");
-        thermalManager.setTargetBed(bedPreheat);
-      }
+      #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+          if (HMI_datas.ena_LevelingTemp_bed) {
+      #endif
+          if (bedPreheat) {
+            if (hotendPreheat) DEBUG_ECHOPGM(" and ");
+            DEBUG_ECHOPGM("bed (", bedPreheat, ")");
+            thermalManager.setTargetBed(bedPreheat);
+          }
+      #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+        }
+        else thermalManager.setTargetBed(0);
+      #endif
+
     #endif
 
     DEBUG_EOL();
 
-    TERN_(WAIT_FOR_NOZZLE_HEAT, if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
-    TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
+    #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+      if (HMI_datas.ena_LevelingTemp_hotend) 
+    #endif
+        TERN_(WAIT_FOR_NOZZLE_HEAT, if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
+    #if ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+      if (HMI_datas.ena_LevelingTemp_bed) 
+    #endif
+        TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
   }
 
 #endif
+
+/**
+ * Print an error and stop()
+ */
+void Probe::probe_error_stop() {
+  SERIAL_ERROR_START();
+  SERIAL_ECHOPGM(STR_STOP_PRE);
+  #if EITHER(Z_PROBE_SLED, Z_PROBE_ALLEN_KEY)
+    SERIAL_ECHOPGM(STR_STOP_UNHOMED);
+  #elif ENABLED(BLTOUCH)
+    SERIAL_ECHOPGM(STR_STOP_BLTOUCH);
+  #endif
+  SERIAL_ECHOLNPGM(STR_STOP_POST);
+  stop();
+}
 
 /**
  * Attempt to deploy or stow the probe
@@ -436,8 +495,7 @@ bool Probe::set_deployed(const bool deploy) {
 
   #if EITHER(Z_PROBE_SLED, Z_PROBE_ALLEN_KEY)
     if (homing_needed_error(TERN_(Z_PROBE_SLED, _BV(X_AXIS)))) {
-      SERIAL_ERROR_MSG(STR_STOP_UNHOMED);
-      stop();
+      probe_error_stop();
       return true;
     }
   #endif
@@ -655,7 +713,7 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
     // Raise to give the probe clearance
     do_blocking_move_to_z(current_position.z + Z_CLEARANCE_MULTI_PROBE, z_probe_fast_mm_s);
 
-  #elif Z_PROBE_FEEDRATE_FAST != Z_PROBE_FEEDRATE_SLOW
+  #elif TERN(EXTJYERSUI, 1, Z_PROBE_FEEDRATE_FAST != Z_PROBE_FEEDRATE_SLOW)
 
     // If the nozzle is well over the travel height then
     // move down quickly before doing the slow probe
@@ -801,7 +859,11 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
   do_blocking_move_to(npos, feedRate_t(XY_PROBE_FEEDRATE_MM_S));
 
   float measured_z = NAN;
-  if (!deploy()) measured_z = run_z_probe(sanity_check) + offset.z;
+  if (!deploy()) {
+    measured_z = run_z_probe(sanity_check) + offset.z;
+    TERN_(HAS_PTC, ptc.apply_compensation(measured_z));
+    TERN_(X_AXIS_TWIST_COMPENSATION, measured_z += xatc.compensation(npos + offset_xy));
+  }
   if (!isnan(measured_z)) {
     const bool big_raise = raise_after == PROBE_PT_BIG_RAISE;
     if (big_raise || raise_after == PROBE_PT_RAISE)

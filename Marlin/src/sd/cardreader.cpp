@@ -33,7 +33,7 @@
 
 #if ENABLED(DWIN_CREALITY_LCD)
   #include "../lcd/e3v2/creality/dwin.h"
-#elif ENABLED(DWIN_CREALITY_LCD_ENHANCED)
+#elif ENABLED(DWIN_LCD_PROUI)
   #include "../lcd/e3v2/proui/dwin.h"
 #endif
 
@@ -195,7 +195,7 @@ char *createFilename(char * const buffer, const dir_t &p) {
 }
 
 //
-// Return 'true' if the item is something Marlin can read
+// Return 'true' if the item is a folder, G-code file or Binary file
 //
 bool CardReader::is_visible_entity(const dir_t &p OPTARG(CUSTOM_FIRMWARE_UPLOAD, bool onlyBin/*=false*/)) {
   //uint8_t pn0 = p.name[0];
@@ -212,14 +212,15 @@ bool CardReader::is_visible_entity(const dir_t &p OPTARG(CUSTOM_FIRMWARE_UPLOAD,
   ) return false;
 
   flag.filenameIsDir = DIR_IS_SUBDIR(&p);               // We know it's a File or Folder
+  setBinFlag(p.name[8] == 'B' &&                        // List .bin files (a firmware file for flashing)
+             p.name[9] == 'I' &&
+             p.name[10]== 'N');
 
   return (
     flag.filenameIsDir                                  // All Directories are ok
+    || fileIsBinary()                                   // BIN files are accepted
     || (!onlyBin && p.name[8] == 'G'
                  && p.name[9] != '~')                   // Non-backup *.G* files are accepted
-    || ( onlyBin && p.name[8]  == 'B'
-                 && p.name[9]  == 'I'
-                 && p.name[10] == 'N')                  // BIN files are accepted
   );
 }
 
@@ -319,7 +320,7 @@ void CardReader::printListing(
         return;
       }
     }
-    else if (is_visible_entity(p OPTARG(CUSTOM_FIRMWARE_UPLOAD, onlyBin))) {
+    else if (is_visible_entity(p OPTARG(CUSTOM_FIRMWARE_UPLOAD, onlyBin)) || parser.seen('A')) {
       if (prepend) { SERIAL_ECHO(prepend); SERIAL_CHAR('/'); }
       SERIAL_ECHO(createFilename(filename, p));
       SERIAL_CHAR(' ');
@@ -350,6 +351,35 @@ void CardReader::ls(
     root.rewind();
     printListing(root, nullptr OPTARG(CUSTOM_FIRMWARE_UPLOAD, onlyBin) OPTARG(LONG_FILENAME_HOST_SUPPORT, includeLongNames));
   }
+}
+
+void CardReader::clearBinFiles(SdFile parent){
+
+  dir_t p;
+  
+  while (parent.readDir(&p, longFilename) > 0) {
+  
+	if (!DIR_IS_SUBDIR(&p)) {
+		//skip folders, bin files are only in root of SD
+		//test file extension for 'BIN'
+		
+		//easy way
+		if (p.name[8] == 'B' && p.name[9] == 'I' && p.name[10] == 'N'){
+			removeFile(createFilename(filename,p));
+		}
+
+		
+	}	
+  
+  }
+
+}
+
+void CardReader::purgeBinFiles(){
+	if (flag.mounted) {
+      root.rewind();
+      clearBinFiles(root);
+    }
 }
 
 #if ENABLED(LONG_FILENAME_HOST_SUPPORT)
@@ -457,7 +487,7 @@ void CardReader::mount() {
     cdroot();
   #if ENABLED(USB_FLASH_DRIVE_SUPPORT) || PIN_EXISTS(SD_DETECT)
     else if (marlin_state != MF_INITIALIZING)
-      ui.set_status(GET_TEXT_F(MSG_MEDIA_INIT_FAIL), -1);
+      LCD_ALERTMESSAGE(MSG_MEDIA_INIT_FAIL);
   #endif
 
   ui.refresh();
@@ -867,6 +897,7 @@ void CardReader::selectFileByIndex(const uint16_t nr) {
       strcpy(filename, sortshort[nr]);
       strcpy(longFilename, sortnames[nr]);
       flag.filenameIsDir = IS_DIR(nr);
+      setBinFlag(strcmp_P(strrchr(filename, '.'), PSTR(".BIN")) == 0);
       return;
     }
   #endif
@@ -884,6 +915,7 @@ void CardReader::selectFileByName(const char * const match) {
         strcpy(filename, sortshort[nr]);
         strcpy(longFilename, sortnames[nr]);
         flag.filenameIsDir = IS_DIR(nr);
+        setBinFlag(strcmp_P(strrchr(filename, '.'), PSTR(".BIN")) == 0);
         return;
       }
   #endif

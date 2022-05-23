@@ -41,6 +41,10 @@ extern const char NUL_STR[],
                   X_LBL[], Y_LBL[], Z_LBL[], E_LBL[],
                   I_LBL[], J_LBL[], K_LBL[];
 
+PGM_P const SP_AXIS_LBL[] PROGMEM = LOGICAL_AXIS_ARRAY(SP_E_LBL, SP_X_LBL, SP_Y_LBL, SP_Z_LBL, SP_I_LBL, SP_J_LBL, SP_K_LBL);
+PGM_P const SP_AXIS_STR[] PROGMEM = LOGICAL_AXIS_ARRAY(SP_E_STR, SP_X_STR, SP_Y_STR, SP_Z_STR, SP_I_STR, SP_J_STR, SP_K_STR);
+
+//
 //
 // Debugging flags for use by M111
 //
@@ -345,6 +349,7 @@ void serialprint_onoff(const bool onoff);
 void serialprintln_onoff(const bool onoff);
 void serialprint_truefalse(const bool tf);
 void serial_spaces(uint8_t count);
+void serial_offset(const_float_t v, const uint8_t sp=0); // For v==0 draw space (sp==1) or plus (sp==2)
 
 void print_bin(const uint16_t val);
 void print_pos(LINEAR_AXIS_ARGS(const_float_t), FSTR_P const prefix=nullptr, FSTR_P const suffix=nullptr);

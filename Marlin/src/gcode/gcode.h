@@ -91,7 +91,7 @@
  *
  *** Print from Media (SDSUPPORT) ***
  * M20  - List SD card. (Requires SDSUPPORT)
- * M21  - Init SD card. (Requires SDSUPPORT)
+ * M21  - Init SD card. (Requires SDSUPPORT) With MULTI_VOLUME select a drive with `M21 Pn` / 'M21 S' / 'M21 U'.
  * M22  - Release SD card. (Requires SDSUPPORT)
  * M23  - Select SD file: "M23 /path/file.gco". (Requires SDSUPPORT)
  * M24  - Start/resume SD print. (Requires SDSUPPORT)
@@ -219,8 +219,8 @@
  * M350 - Set microstepping mode. (Requires digital microstepping pins.)
  * M351 - Toggle MS1 MS2 pins directly. (Requires digital microstepping pins.)
  * M355 - Set Case Light on/off and set brightness. (Requires CASE_LIGHT_PIN)
- * M380 - Activate solenoid on active extruder. (Requires EXT_SOLENOID)
- * M381 - Disable all solenoids. (Requires EXT_SOLENOID)
+ * M380 - Activate solenoid on active tool (Requires EXT_SOLENOID) or the tool specified by 'S' (Requires MANUAL_SOLENOID_CONTROL).
+ * M381 - Disable solenoids on all tools (Requires EXT_SOLENOID) or the tool specified by 'S' (Requires MANUAL_SOLENOID_CONTROL).
  * M400 - Finish all moves.
  * M401 - Deploy and activate Z probe. (Requires a probe)
  * M402 - Deactivate and stow Z probe. (Requires a probe)
@@ -230,7 +230,6 @@
  * M406 - Disable Filament Sensor flow control. (Requires FILAMENT_WIDTH_SENSOR)
  * M407 - Display measured filament diameter in millimeters. (Requires FILAMENT_WIDTH_SENSOR)
  * M410 - Quickstop. Abort all planned moves.
- * M412 - Enable / Disable Filament Runout Detection. (Requires FILAMENT_RUNOUT_SENSOR)
  * M413 - Enable / Disable Power-Loss Recovery. (Requires POWER_LOSS_RECOVERY)
  * M414 - Set language by index. (Requires LCD_LANGUAGE_2...)
  * M420 - Enable/Disable Leveling (with current values) S1=enable S0=disable (Requires MESH_BED_LEVELING or ABL)
@@ -255,6 +254,7 @@
  * M554 - Get or set IP gateway. (Requires enabled Ethernet port)
  * M569 - Enable stealthChop on an axis. (Requires at least one _DRIVER_TYPE to be TMC2130/2160/2208/2209/5130/5160)
  * M575 - Change the serial baud rate. (Requires BAUD_RATE_GCODE)
+ * M591 - Configure Filament Runout Detection. (Requires FILAMENT_RUNOUT_SENSOR)
  * M600 - Pause for filament change: "M600 X<pos> Y<pos> Z<raise> E<first_retract> L<later_retract>". (Requires ADVANCED_PAUSE_FEATURE)
  * M603 - Configure filament change: "M603 T<tool> U<unload_length> L<load_length>". (Requires ADVANCED_PAUSE_FEATURE)
  * M605 - Set Dual X-Carriage movement mode: "M605 S<mode> [X<x_offset>] [R<temp_offset>]". (Requires DUAL_X_CARRIAGE)
@@ -978,8 +978,10 @@ private:
   #endif
 
   #if HAS_FILAMENT_SENSOR
-    static void M412();
-    static void M412_report(const bool forReplay=true);
+    static void M412() { M591(); }
+    static void M591();
+    //static void M412_report(const bool forReplay=true);
+    static void M591_report(const bool forReplay=true);
   #endif
 
   #if HAS_MULTI_LANGUAGE
@@ -1193,6 +1195,11 @@ private:
     static void M413();
     static void M413_report(const bool forReplay=true);
     static void M1000();
+  #endif
+
+  #if ENABLED(X_AXIS_TWIST_COMPENSATION)
+    static void M423();
+    static void M423_report(const bool forReplay=true);
   #endif
 
   #if ENABLED(SDSUPPORT)

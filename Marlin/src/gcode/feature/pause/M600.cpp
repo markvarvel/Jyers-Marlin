@@ -56,6 +56,9 @@
  *  Z[distance] - Move the Z axis by this distance
  *  X[position] - Move to this X position, with Y
  *  Y[position] - Move to this Y position, with X
+ *  I[position] - Move to this I position (instead of NOZZLE_PARK_POINT.i)
+ *  J[position] - Move to this J position (instead of NOZZLE_PARK_POINT.j)
+ *  K[position] - Move to this K position (instead of NOZZLE_PARK_POINT.k)
  *  U[distance] - Retract distance for removal (manual reload)
  *  L[distance] - Extrude distance for insertion (manual reload)
  *  B[count]    - Number of times to beep, -1 for indefinite (if equipped with a buzzer)
@@ -88,7 +91,8 @@ void GcodeSuite::M600() {
                                    // In this case, for duplicating modes set DXC_ext to the extruder that ran out.
       #if MULTI_FILAMENT_SENSOR
         if (idex_is_duplicating())
-          DXC_ext = (READ(FIL_RUNOUT2_PIN) == FIL_RUNOUT2_STATE) ? 1 : 0;
+          DXC_ext = (READ(FIL_RUNOUT2_PIN) == runout.out_state(1)) ? 1 : 0;
+
       #else
         DXC_ext = active_extruder;
       #endif

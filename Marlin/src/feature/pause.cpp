@@ -57,8 +57,10 @@
 
 #if ENABLED(EXTENSIBLE_UI)
   #include "../lcd/extui/ui_api.h"
-#elif ENABLED(DWIN_CREALITY_LCD_ENHANCED)
+#elif ENABLED(DWIN_LCD_PROUI)
   #include "../lcd/e3v2/proui/dwin.h"
+#elif ENABLED(DWIN_CREALITY_LCD_JYERSUI)
+  #include "../lcd/e3v2/jyersui/dwin.h"
 #endif
 
 #include "../lcd/marlinui.h"
@@ -208,13 +210,23 @@ bool load_filament(const_float_t slow_load_length/*=0*/, const_float_t fast_load
     while (wait_for_user) {
       impatient_beep(max_beep_count);
       #if BOTH(FILAMENT_CHANGE_RESUME_ON_INSERT, FILAMENT_RUNOUT_SENSOR)
-        #if ENABLED(MULTI_FILAMENT_SENSOR)
-          #define _CASE_INSERTED(N) case N-1: if (READ(FIL_RUNOUT##N##_PIN) != FIL_RUNOUT##N##_STATE) wait_for_user = false; break;
-          switch (active_extruder) {
-            REPEAT_1(NUM_RUNOUT_SENSORS, _CASE_INSERTED)
-          }
-        #else
-          if (READ(FIL_RUNOUT_PIN) != FIL_RUNOUT_STATE) wait_for_user = false;
+          #if MULTI_FILAMENT_SENSOR
+              LOOP_S_LE_N(i, 1, NUM_RUNOUT_SENSORS) {
+                pin_t pin;
+                switch (i) {
+                  default: continue;
+                  #define _CASE_RUNOUT(N) case N: pin = FIL_RUNOUT##N##_PIN; break;
+                  REPEAT_1(NUM_RUNOUT_SENSORS, _CASE_RUNOUT)
+                  #undef _CASE_RUNOUT
+                }
+                const RunoutMode rm = runout.mode[i - 1];
+                if (rm != RM_NONE && rm != RM_MOTION_SENSOR && extDigitalRead(pin) != runout.out_state(i - 1))
+                  wait_for_user = false;
+              }
+          #else
+          if (READ(FIL_RUNOUT_PIN) != runout.out_state(active_extruder))
+            wait_for_user = false;
+        //
         #endif
       #endif
       idle_no_sleep();
@@ -281,7 +293,7 @@ bool load_filament(const_float_t slow_load_length/*=0*/, const_float_t fast_load
           // Show "Purge More" / "Resume" menu and wait for reply
           KEEPALIVE_STATE(PAUSED_FOR_USER);
           wait_for_user = false;
-          #if ANY(HAS_LCD_MENU, DWIN_CREALITY_LCD_ENHANCED, DWIN_CREALITY_LCD_JYERSUI)
+          #if ANY(HAS_MARLINUI_MENU, DWIN_LCD_PROUI, DWIN_CREALITY_LCD_JYERSUI)
             ui.pause_show_message(PAUSE_MESSAGE_OPTION); // Also sets PAUSE_RESPONSE_WAIT_FOR
           #else
             pause_menu_response = PAUSE_RESPONSE_WAIT_FOR;
@@ -407,6 +419,7 @@ bool pause_print(const_float_t retract, const xyz_pos_t &park_point, const bool 
   #endif
 
   TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_open(PROMPT_INFO, F("Pause"), FPSTR(DISMISS_STR)));
+  TERN_(DWIN_LCD_PROUI, DWIN_Print_Pause());
 
   // Indicate that the printer is paused
   ++did_pause_print;
@@ -549,7 +562,9 @@ void wait_for_confirmation(const bool is_reload/*=false*/, const int8_t max_beep
 
       TERN_(EXTENSIBLE_UI, ExtUI::onStatusChanged(GET_TEXT_F(MSG_REHEATING)));
 
-      TERN_(DWIN_CREALITY_LCD_ENHANCED, LCD_MESSAGE(MSG_REHEATING));
+      TERN_(DWIN_LCD_PROUI, LCD_MESSAGE(MSG_REHEATING));
+
+      TERN_(DWIN_CREALITY_LCD_JYERSUI, LCD_MESSAGE(MSG_REHEATING));
 
       // Re-enable the heaters if they timed out
       HOTEND_LOOP() thermalManager.reset_hotend_idle_timer(e);
@@ -567,7 +582,8 @@ void wait_for_confirmation(const bool is_reload/*=false*/, const int8_t max_beep
 
       TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_do(PROMPT_USER_CONTINUE, GET_TEXT_F(MSG_REHEATDONE), FPSTR(CONTINUE_STR)));
       TERN_(EXTENSIBLE_UI, ExtUI::onUserConfirmRequired(GET_TEXT_F(MSG_REHEATDONE)));
-      TERN_(DWIN_CREALITY_LCD_ENHANCED, LCD_MESSAGE(MSG_REHEATDONE));
+      TERN_(DWIN_LCD_PROUI, LCD_MESSAGE(MSG_REHEATDONE));
+      TERN_(DWIN_CREALITY_LCD_JYERSUI, LCD_MESSAGE(MSG_REHEATDONE));
 
       IF_DISABLED(PAUSE_REHEAT_FAST_RESUME, wait_for_user = true);
 
@@ -671,8 +687,9 @@ void resume_print(const_float_t slow_load_length/*=0*/, const_float_t fast_load_
 
   // If resume_position is negative
   if (resume_position.e < 0) unscaled_e_move(resume_position.e, feedRate_t(PAUSE_PARK_RETRACT_FEEDRATE));
-  #if ADVANCED_PAUSE_RESUME_PRIME != 0
-    unscaled_e_move(ADVANCED_PAUSE_RESUME_PRIME, feedRate_t(ADVANCED_PAUSE_PURGE_FEEDRATE));
+  #ifdef ADVANCED_PAUSE_RESUME_PRIME
+    if (ADVANCED_PAUSE_RESUME_PRIME != 0)
+      unscaled_e_move(ADVANCED_PAUSE_RESUME_PRIME, feedRate_t(ADVANCED_PAUSE_PURGE_FEEDRATE));
   #endif
 
   // Now all extrusion positions are resumed and ready to be confirmed
@@ -709,9 +726,14 @@ void resume_print(const_float_t slow_load_length/*=0*/, const_float_t fast_load_
 
   TERN_(HAS_FILAMENT_SENSOR, runout.reset());
 
-  TERN_(HAS_STATUS_MESSAGE, ui.reset_status());
+  //TERN_(HAS_STATUS_MESSAGE, ui.reset_status());
+  #if ENABLED(DWIN_LCD_PROUI)
+    DWIN_Print_Resume();
+  #else
+    TERN_(HAS_STATUS_MESSAGE, ui.reset_status());
+  #endif
   TERN_(HAS_MARLINUI_MENU, ui.return_to_status());
-  TERN_(DWIN_CREALITY_LCD_ENHANCED, HMI_ReturnScreen());
+  //TERN_(DWIN_LCD_PROUI, HMI_ReturnScreen());
 }
 
 #endif // ADVANCED_PAUSE_FEATURE

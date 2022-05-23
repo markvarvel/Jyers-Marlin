@@ -93,12 +93,12 @@
     }
     #else
       SERIAL_ECHOLNPGM("  M200 S", parser.volumetric_enabled);
-      LOOP_L_N(i, EXTRUDERS) {
+      EXTRUDER_LOOP() {
         report_echo_start(forReplay);
         SERIAL_ECHOLNPGM(
-          "  M200 T", i, " D", LINEAR_UNIT(planner.filament_size[i])
+          "  M200 T", e, " D", LINEAR_UNIT(planner.filament_size[e])
           #if ENABLED(VOLUMETRIC_EXTRUDER_LIMIT)
-            , " L", LINEAR_UNIT(planner.volumetric_extruder_limit[i])
+            , " L", LINEAR_UNIT(planner.volumetric_extruder_limit[e])
           #endif
         );
       }
@@ -125,9 +125,10 @@ void GcodeSuite::M201() {
   #endif
 
   LOOP_LOGICAL_AXES(i) {
-    if (parser.seenval(axis_codes[i])) {
-      const uint8_t a = TERN(HAS_EXTRUDERS, (i == E_AXIS ? uint8_t(E_AXIS_N(target_extruder)) : i), i);
-      planner.set_max_acceleration(a, parser.value_axis_units((AxisEnum)a));
+    // if (parser.seenval(axis_codes[i])) {
+    if (parser.seenval(AXIS_CHAR(i))) {
+      const AxisEnum a = TERN(HAS_EXTRUDERS, (i == E_AXIS ? E_AXIS_N(target_extruder) : (AxisEnum)i), (AxisEnum)i);
+      planner.set_max_acceleration(a, parser.value_axis_units(a));
     }
   }
 }
@@ -171,9 +172,10 @@ void GcodeSuite::M203() {
   if (target_extruder < 0) return;
 
   LOOP_LOGICAL_AXES(i)
-    if (parser.seenval(axis_codes[i])) {
-      const uint8_t a = TERN(HAS_EXTRUDERS, (i == E_AXIS ? uint8_t(E_AXIS_N(target_extruder)) : i), i);
-      planner.set_max_feedrate(a, parser.value_axis_units((AxisEnum)a));
+    // if (parser.seenval(axis_codes[i])) {
+    if (parser.seenval(AXIS_CHAR(i))) {
+      const AxisEnum a = TERN(HAS_EXTRUDERS, (i == E_AXIS ? E_AXIS_N(target_extruder) : (AxisEnum)i), (AxisEnum)i);
+      planner.set_max_feedrate(a, parser.value_axis_units(a));
     }
 }
 

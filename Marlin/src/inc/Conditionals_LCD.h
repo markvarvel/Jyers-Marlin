@@ -473,11 +473,14 @@
 #endif
 
 // Aliases for LCD features
-#if EITHER(DWIN_CREALITY_LCD, DWIN_CREALITY_LCD_ENHANCED)
+#if EITHER(DWIN_CREALITY_LCD, DWIN_LCD_PROUI)
   #define HAS_DWIN_E3V2_BASIC 1
 #endif
 #if EITHER(HAS_DWIN_E3V2_BASIC, DWIN_CREALITY_LCD_JYERSUI)
   #define HAS_DWIN_E3V2 1
+#endif
+#if ENABLED(DWIN_LCD_PROUI)
+  #define DO_LIST_BIN_FILES 1
 #endif
 
 // E3V2 extras
@@ -486,16 +489,18 @@
   #ifndef LCD_SERIAL_PORT
     #if MB(BTT_SKR_MINI_E3_V1_0, BTT_SKR_MINI_E3_V1_2, BTT_SKR_MINI_E3_V2_0, BTT_SKR_MINI_E3_V3_0, BTT_SKR_E3_TURBO)
       #define LCD_SERIAL_PORT 1
-    #elif MB(CREALITY_V24S1_301)
-      #define LCD_SERIAL_PORT 2 // Creality Ender3S1 board
+    #elif MB(CREALITY_V24S1_301, CREALITY_V24S1_301F4, CREALITY_V423) // Creality Ender3S1 board and Ender2-Pro (and some Ender3V2...)
+	    #define LCD_SERIAL_PORT 2
     #else
       #define LCD_SERIAL_PORT 3 // Creality 4.x board
     #endif
   #endif
   #define HAS_LCD_BRIGHTNESS 1
-  #define LCD_BRIGHTNESS_MAX 250
-  #if ENABLED(DWIN_CREALITY_LCD_ENHANCED)
-    #define LCD_BRIGHTNESS_DEFAULT 127
+  #define LCD_BRIGHTNESS_MAX 255
+  #if EITHER(DWIN_LCD_PROUI, DWIN_CREALITY_LCD_JYERSUI)
+    #ifndef LCD_BRIGHTNESS_DEFAULT
+      #define LCD_BRIGHTNESS_DEFAULT 127
+    #endif
   #endif
 #endif
 
@@ -513,11 +518,15 @@
   #endif
 #endif
 
-#if ANY(HAS_WIRED_LCD, EXTENSIBLE_UI, DWIN_CREALITY_LCD_JYERSUI)
+#if ANY(HAS_WIRED_LCD, EXTENSIBLE_UI, DWIN_LCD_PROUI, DWIN_CREALITY_LCD_JYERSUI)
   #define HAS_DISPLAY 1
 #endif
 
-#if ANY(HAS_DISPLAY, HAS_DWIN_E3V2, GLOBAL_STATUS_MESSAGE)
+#if HAS_WIRED_LCD && !HAS_GRAPHICAL_TFT && !IS_DWIN_MARLINUI
+  #define HAS_LCDPRINT 1
+#endif
+
+#if ANY(HAS_DISPLAY, HAS_DWIN_E3V2)
   #define HAS_STATUS_MESSAGE 1
 #endif
 
@@ -742,6 +751,7 @@
 #endif
 
 // Helper macros for extruder and hotend arrays
+#define EXTRUDER_LOOP() for (int8_t e = 0; e < EXTRUDERS; e++)
 #define HOTEND_LOOP() for (int8_t e = 0; e < HOTENDS; e++)
 #define ARRAY_BY_EXTRUDERS(V...) ARRAY_N(EXTRUDERS, V)
 #define ARRAY_BY_EXTRUDERS1(v1) ARRAY_N_1(EXTRUDERS, v1)
@@ -825,11 +835,16 @@
 /**
  * Fill in undefined Filament Sensor options
  */
+
 #if ENABLED(FILAMENT_RUNOUT_SENSOR)
+  #define HAS_FILAMENT_SENSOR 1
+  #ifndef NUM_RUNOUT_SENSORS
+    #define NUM_RUNOUT_SENSORS E_STEPPERS
+  #endif
+  #if ENABLED(MIXING_EXTRUDER)
+    #define WATCH_ALL_RUNOUT_SENSORS
+  #endif
   #if NUM_RUNOUT_SENSORS >= 1
-    #ifndef FIL_RUNOUT1_STATE
-      #define FIL_RUNOUT1_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT1_PULLUP
       #define FIL_RUNOUT1_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -838,9 +853,7 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 2
-    #ifndef FIL_RUNOUT2_STATE
-      #define FIL_RUNOUT2_STATE FIL_RUNOUT_STATE
-    #endif
+    #define MULTI_FILAMENT_SENSOR 1
     #ifndef FIL_RUNOUT2_PULLUP
       #define FIL_RUNOUT2_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -849,9 +862,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 3
-    #ifndef FIL_RUNOUT3_STATE
-      #define FIL_RUNOUT3_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT3_PULLUP
       #define FIL_RUNOUT3_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -860,9 +870,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 4
-    #ifndef FIL_RUNOUT4_STATE
-      #define FIL_RUNOUT4_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT4_PULLUP
       #define FIL_RUNOUT4_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -871,9 +878,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 5
-    #ifndef FIL_RUNOUT5_STATE
-      #define FIL_RUNOUT5_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT5_PULLUP
       #define FIL_RUNOUT5_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -882,9 +886,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 6
-    #ifndef FIL_RUNOUT6_STATE
-      #define FIL_RUNOUT6_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT6_PULLUP
       #define FIL_RUNOUT6_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -893,9 +894,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 7
-    #ifndef FIL_RUNOUT7_STATE
-      #define FIL_RUNOUT7_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT7_PULLUP
       #define FIL_RUNOUT7_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -904,9 +902,6 @@
     #endif
   #endif
   #if NUM_RUNOUT_SENSORS >= 8
-    #ifndef FIL_RUNOUT8_STATE
-      #define FIL_RUNOUT8_STATE FIL_RUNOUT_STATE
-    #endif
     #ifndef FIL_RUNOUT8_PULLUP
       #define FIL_RUNOUT8_PULLUP FIL_RUNOUT_PULLUP
     #endif
@@ -1419,4 +1414,29 @@
  */
 #if defined(NEOPIXEL_BKGD_INDEX_FIRST) && !defined(NEOPIXEL_BKGD_INDEX_LAST)
   #define NEOPIXEL_BKGD_INDEX_LAST NEOPIXEL_BKGD_INDEX_FIRST
+#endif
+
+/*** TEMPORARY COMPATIBILITY ***/
+
+#if HAS_FILAMENT_SENSOR
+  #ifndef FIL_RUNOUT_ENABLED
+    #if FIL_RUNOUT_ENABLED_DEFAULT
+      #define FIL_RUNOUT_ENABLED ARRAY_N_1(NUM_RUNOUT_SENSORS, true)
+    #else
+      #define FIL_RUNOUT_ENABLED ARRAY_N_1(NUM_RUNOUT_SENSORS, false)
+    #endif
+  #endif
+  #ifndef FIL_RUNOUT_MODE
+    #if FIL_RUNOUT_STATE
+      #define FIL_RUNOUT_MODE ARRAY_N_1(NUM_RUNOUT_SENSORS, 1)
+    #else
+      #define FIL_RUNOUT_MODE ARRAY_N_1(NUM_RUNOUT_SENSORS, 1)
+    #endif
+  #endif
+  #ifndef FIL_RUNOUT_DISTANCE_MM
+    #define FIL_RUNOUT_DISTANCE_MM ARRAY_N_1(NUM_RUNOUT_SENSORS, 10)
+  #endif
+  #undef FIL_RUNOUT_ENABLED_DEFAULT
+  #undef FIL_RUNOUT_STATE
+  #undef FILAMENT_RUNOUT_DISTANCE_MM
 #endif

@@ -366,12 +366,13 @@ void unified_bed_leveling::G29() {
         break;
 
       case 1:
-        LOOP_L_N(x, GRID_MAX_POINTS_X) {                     // Create a diagonal line several Mesh cells thick that is raised
+        LOOP_L_N(x, GRID_MAX_POINTS_X) {
+          const uint8_t x2 = x + (x < (GRID_MAX_POINTS_Y) - 1 ? 1 : -1);                 // Create a diagonal line several Mesh cells thick that is raised
           z_values[x][x] += 9.999f;
-          z_values[x][x + (x < (GRID_MAX_POINTS_Y) - 1) ? 1 : -1] += 9.999f; // We want the altered line several mesh points thick
+          z_values[x][x2] += 9.999f; // We want the altered line several mesh points thick
           #if ENABLED(EXTENSIBLE_UI)
             ExtUI::onMeshUpdate(x, x, z_values[x][x]);
-            ExtUI::onMeshUpdate(x, (x + (x < (GRID_MAX_POINTS_Y) - 1) ? 1 : -1), z_values[x][x + (x < (GRID_MAX_POINTS_Y) - 1) ? 1 : -1]);
+            ExtUI::onMeshUpdate(x, (x2), z_values[x][x2]);
           #endif
 
         }
@@ -734,10 +735,17 @@ void unified_bed_leveling::shift_mesh_height() {
     TERN_(EXTENSIBLE_UI, ExtUI::onMeshUpdate(best.pos, ExtUI::G29_START));
     do {
       if (do_ubl_mesh_map) display_map(param.T_map_type);
-
+      
       const uint8_t point_num = (GRID_MAX_POINTS - count) + 1;
       SERIAL_ECHOLNPGM("Probing mesh point ", point_num, "/", GRID_MAX_POINTS, ".");
       TERN_(HAS_STATUS_MESSAGE, ui.status_printf(0, F(S_FMT " %i/%i"), GET_TEXT(MSG_PROBING_POINT), point_num, int(GRID_MAX_POINTS)));
+
+      #if EXTJYERSUI
+        if (HMI_flags.cancel_ubl) {
+          SERIAL_ECHOLNPGM("\nMesh only partially populated.\n");
+          break;
+        }
+      #endif
 
       #if HAS_MARLINUI_MENU
         if (ui.button_pressed()) {
@@ -1219,6 +1227,7 @@ void unified_bed_leveling::restore_ubl_active_state_and_leave() {
     }
   #endif
   set_bed_leveling_enabled(ubl_state_at_invocation);
+  TERN_(EXTENSIBLE_UI, ExtUI::onLevelingDone());
 }
 
 mesh_index_pair unified_bed_leveling::find_furthest_invalid_mesh_point() {

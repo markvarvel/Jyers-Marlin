@@ -46,7 +46,7 @@
 #include "planner.h"
 #include "stepper/indirection.h"
 #ifdef __AVR__
-  #include "speed_lookuptable.h"
+  #include "stepper/speed_lookuptable.h"
 #endif
 
 // Disable multiple steps per ISR
@@ -252,7 +252,8 @@ typedef struct {
   };
   constexpr ena_mask_t linear_bits() { return _BV(LINEAR_AXES) - 1; }
   constexpr ena_mask_t e_bits() { return (_BV(EXTRUDERS) - 1) << LINEAR_AXES; }
-} axis_flags_t;
+// } axis_flags_t;
+  } stepper_flags_t;  
 
 // All the stepper enable pins
 constexpr pin_t ena_pins[] = {
@@ -336,7 +337,7 @@ class Stepper {
       static constexpr uint8_t last_moved_extruder = 0;
     #endif
 
-    #if HAS_FREEZE_PIN
+    #if ENABLED(FREEZE_FEATURE)
       static bool frozen;                   // Set this flag to instantly freeze motion
     #endif
 
@@ -587,7 +588,8 @@ class Stepper {
       static void refresh_motor_power();
     #endif
 
-    static axis_flags_t axis_enabled;   // Axis stepper(s) ENABLED states
+    //static axis_flags_t axis_enabled;   // Axis stepper(s) ENABLED states
+    static stepper_flags_t axis_enabled;   // Axis stepper(s) ENABLED states
 
     static bool axis_is_enabled(const AxisEnum axis E_OPTARG(const uint8_t eindex=0)) {
       return TEST(axis_enabled.bits, INDEX_OF_AXIS(axis, eindex));

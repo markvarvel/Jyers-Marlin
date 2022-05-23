@@ -703,7 +703,7 @@ void Planner::init() {
     // All other 32-bit MPUs can easily do inverse using hardware division,
     // so we don't need to reduce precision or to use assembly language at all.
     // This routine, for all other archs, returns 0x100000000 / d ~= 0xFFFFFFFF / d
-    static FORCE_INLINE uint32_t get_period_inverse(const uint32_t d) {
+    FORCE_INLINE static uint32_t get_period_inverse(const uint32_t d) {
       return d ? 0xFFFFFFFF / d : 0xFFFFFFFF;
     }
   #endif
@@ -1260,7 +1260,7 @@ void Planner::recalculate() {
     #if ENABLED(FAN_SOFT_PWM)
       #define _FAN_SET(F) thermalManager.soft_pwm_amount_fan[F] = CALC_FAN_SPEED(F);
     #else
-      #define _FAN_SET(F) set_pwm_duty(pin_t(FAN##F##_PIN), CALC_FAN_SPEED(F));
+      #define _FAN_SET(F) hal.set_pwm_duty(pin_t(FAN##F##_PIN), CALC_FAN_SPEED(F));
     #endif
     #define FAN_SET(F) do{ kickstart_fan(fan_speed, ms, F); _FAN_SET(F); }while(0)
 
@@ -1397,8 +1397,8 @@ void Planner::check_axes_activity() {
   TERN_(AUTOTEMP, autotemp_task());
 
   #if ENABLED(BARICUDA)
-    TERN_(HAS_HEATER_1, set_pwm_duty(pin_t(HEATER_1_PIN), tail_valve_pressure));
-    TERN_(HAS_HEATER_2, set_pwm_duty(pin_t(HEATER_2_PIN), tail_e_to_p_pressure));
+    TERN_(HAS_HEATER_1, hal.set_pwm_duty(pin_t(HEATER_1_PIN), tail_valve_pressure));
+    TERN_(HAS_HEATER_2, hal.set_pwm_duty(pin_t(HEATER_2_PIN), tail_e_to_p_pressure));
   #endif
 }
 
@@ -1505,7 +1505,7 @@ void Planner::check_axes_activity() {
     volumetric_extruder_feedrate_limit[e] = (lim && siz) ? lim / CIRCLE_AREA(siz * 0.5f) : 0;
   }
   void Planner::calculate_volumetric_extruder_limits() {
-    LOOP_L_N(e, EXTRUDERS) calculate_volumetric_extruder_limit(e);
+    EXTRUDER_LOOP() calculate_volumetric_extruder_limit(e);
   }
 
 #endif
@@ -1591,7 +1591,7 @@ void Planner::check_axes_activity() {
         #elif ENABLED(AUTO_BED_LEVELING_UBL)
           fade_scaling_factor ? fade_scaling_factor * ubl.get_z_correction(raw) : 0.0
         #elif ENABLED(AUTO_BED_LEVELING_BILINEAR)
-          fade_scaling_factor ? fade_scaling_factor * bilinear_z_offset(raw) : 0.0
+          fade_scaling_factor ? fade_scaling_factor * bbl.get_z_correction(raw) : 0.0
         #endif
       );
 
@@ -1624,7 +1624,7 @@ void Planner::check_axes_activity() {
           #elif ENABLED(AUTO_BED_LEVELING_UBL)
             fade_scaling_factor ? fade_scaling_factor * ubl.get_z_correction(raw) : 0.0
           #elif ENABLED(AUTO_BED_LEVELING_BILINEAR)
-            fade_scaling_factor ? fade_scaling_factor * bilinear_z_offset(raw) : 0.0
+            fade_scaling_factor ? fade_scaling_factor * bbl.get_z_correction(raw) : 0.0
           #endif
         );
 
@@ -1706,7 +1706,8 @@ void Planner::endstop_triggered(const AxisEnum axis) {
 }
 
 float Planner::triggered_position_mm(const AxisEnum axis) {
-  return stepper.triggered_position(axis) * mm_per_step[axis];
+  const float result = DIFF_TERN(BACKLASH_COMPENSATION, stepper.triggered_position(axis), backlash.get_applied_steps(axis));
+  return result * mm_per_step[axis];
 }
 
 void Planner::finish_and_disable() {
@@ -1728,8 +1729,8 @@ float Planner::get_axis_position_mm(const AxisEnum axis) {
       // Protect the access to the position.
       const bool was_enabled = stepper.suspend();
 
-      const int32_t p1 = stepper.position(CORE_AXIS_1),
-                    p2 = stepper.position(CORE_AXIS_2);
+      const int32_t p1 = DIFF_TERN(BACKLASH_COMPENSATION, stepper.position(CORE_AXIS_1), backlash.get_applied_steps(CORE_AXIS_1)),
+                    p2 = DIFF_TERN(BACKLASH_COMPENSATION, stepper.position(CORE_AXIS_2), backlash.get_applied_steps(CORE_AXIS_2));
 
       if (was_enabled) stepper.wake_up();
 
@@ -1738,7 +1739,7 @@ float Planner::get_axis_position_mm(const AxisEnum axis) {
       axis_steps = (axis == CORE_AXIS_2 ? CORESIGN(p1 - p2) : p1 + p2) * 0.5f;
     }
     else
-      axis_steps = stepper.position(axis);
+      axis_steps = DIFF_TERN(BACKLASH_COMPENSATION, stepper.position(axis), backlash.get_applied_steps(axis));
 
   #elif EITHER(MARKFORGED_XY, MARKFORGED_YX)
 
@@ -1755,11 +1756,12 @@ float Planner::get_axis_position_mm(const AxisEnum axis) {
       axis_steps = ((axis == CORE_AXIS_1) ? p1 - p2 : p2);
     }
     else
-      axis_steps = stepper.position(axis);
+      axis_steps = DIFF_TERN(BACKLASH_COMPENSATION, stepper.position(axis), backlash.get_applied_steps(axis));
 
   #else
 
     axis_steps = stepper.position(axis);
+    TERN_(BACKLASH_COMPENSATION, axis_steps -= backlash.get_applied_steps(axis));
 
   #endif
 
@@ -2471,7 +2473,7 @@ bool Planner::_populate_block(block_t * const block, bool split_move,
   block->acceleration_steps_per_s2 = accel;
   block->acceleration = accel / steps_per_mm;
   #if DISABLED(S_CURVE_ACCELERATION)
-    block->acceleration_rate = (uint32_t)(accel * (sq(4096.0f) / (STEPPER_TIMER_RATE)));
+    block->acceleration_rate = (uint32_t)(accel * (float(1UL << 24) / (STEPPER_TIMER_RATE)));
   #endif
   #if ENABLED(LIN_ADVANCE)
     if (block->use_advance_lead) {
@@ -2841,6 +2843,9 @@ void Planner::buffer_sync_block(TERN_(LASER_SYNCHRONOUS_M106_M107, uint8_t sync_
   block->flag = sync_flag;
 
   block->position = position;
+  #if ENABLED(BACKLASH_COMPENSATION)
+    LOOP_LINEAR_AXES(axis) block->position[axis] += backlash.get_applied_steps((AxisEnum)axis);
+  #endif
 
   #if BOTH(HAS_FAN, LASER_SYNCHRONOUS_M106_M107)
     FANS_LOOP(i) block->fan_speed[i] = thermalManager.fan_speed[i];
@@ -3108,13 +3113,21 @@ void Planner::set_machine_position_mm(const abce_pos_t &abce) {
       LROUND(abce.k * settings.axis_steps_per_mm[K_AXIS])
     )
   );
+
   if (has_blocks_queued()) {
     //previous_nominal_speed_sqr = 0.0; // Reset planner junction speeds. Assume start from rest.
     //previous_speed.reset();
     buffer_sync_block();
   }
-  else
-    stepper.set_position(position);
+  else {
+    #if ENABLED(BACKLASH_COMPENSATION)
+      abce_long_t stepper_pos = position;
+      LOOP_LINEAR_AXES(axis) stepper_pos[axis] += backlash.get_applied_steps((AxisEnum)axis);
+      stepper.set_position(stepper_pos);
+    #else
+      stepper.set_position(position);
+    #endif
+  }
 }
 
 void Planner::set_position_mm(const xyze_pos_t &xyze) {
@@ -3175,7 +3188,7 @@ void Planner::refresh_positioning() {
 }
 
 // Apply limits to a variable and give a warning if the value was out of range
-inline void limit_and_warn(float &val, const uint8_t axis, PGM_P const setting_name, const xyze_float_t &max_limit) {
+inline void limit_and_warn(float &val, const AxisEnum axis, PGM_P const setting_name, const xyze_float_t &max_limit) {
   const uint8_t lim_axis = TERN_(HAS_EXTRUDERS, axis > E_AXIS ? E_AXIS :) axis;
   const float before = val;
   LIMIT(val, 0.1, max_limit[lim_axis]);
@@ -3194,7 +3207,7 @@ inline void limit_and_warn(float &val, const uint8_t axis, PGM_P const setting_n
  *
  * This hard limit is applied as a block is being added to the planner queue.
  */
-void Planner::set_max_acceleration(const uint8_t axis, float inMaxAccelMMS2) {
+void Planner::set_max_acceleration(const AxisEnum axis, float inMaxAccelMMS2) {
   #if ENABLED(LIMITED_MAX_ACCEL_EDITING)
     #ifdef MAX_ACCEL_EDIT_VALUES
       constexpr xyze_float_t max_accel_edit = MAX_ACCEL_EDIT_VALUES;
@@ -3217,7 +3230,7 @@ void Planner::set_max_acceleration(const uint8_t axis, float inMaxAccelMMS2) {
  *
  * This hard limit is applied as a block is being added to the planner queue.
  */
-void Planner::set_max_feedrate(const uint8_t axis, float inMaxFeedrateMMS) {
+void Planner::set_max_feedrate(const AxisEnum axis, float inMaxFeedrateMMS) {
   #if ENABLED(LIMITED_MAX_FR_EDITING)
     #ifdef MAX_FEEDRATE_EDIT_VALUES
       constexpr xyze_float_t max_fr_edit = MAX_FEEDRATE_EDIT_VALUES;
